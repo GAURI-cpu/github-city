@@ -88,14 +88,14 @@ scene.add(plane);
 
 // 🟦 Body (thicker + balanced)
 const body = new THREE.Mesh(
-  new THREE.BoxGeometry(0.6, 0.6, 3),
+  new THREE.BoxGeometry(0.7, 0.6, 4),
   new THREE.MeshBasicMaterial({ color: 0xffffff })
 );
 plane.add(body);
 
 // 🟥 Wings (wider)
 const wings = new THREE.Mesh(
-  new THREE.BoxGeometry(3, 0.1, 0.6),
+  new THREE.BoxGeometry(6, 0.1, 0.6),
   new THREE.MeshBasicMaterial({ color: 0xff5555 })
 );
 wings.position.y = 0;
@@ -111,7 +111,7 @@ plane.add(tailWing);
 
 // ⬜ Vertical tail
 const tail = new THREE.Mesh(
-  new THREE.BoxGeometry(0.2, 0.8, 0.3),
+  new THREE.BoxGeometry(0.5, 0.9, 0.4),
   new THREE.MeshBasicMaterial({ color: 0xffffff })
 );
 tail.position.set(0, 0.4, -1.5);
@@ -122,7 +122,7 @@ const glow = new THREE.Mesh(
   new THREE.SphereGeometry(0.15),
   new THREE.MeshBasicMaterial({ color: 0xffaa00 })
 );
-glow.position.set(0, 0, 1.6);
+glow.position.set(0, 0, 1.9);
 plane.add(glow);
 
 // position
@@ -135,11 +135,41 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// plane Movement 
+// 🎮 Plane Controls
+const keys = {
+  left: false,
+  right: false,
+  up: false,
+  down: false
+};
+
+const velocity = {
+  x: 0,
+  y: 0
+};
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft') keys.left = true;
+  if (e.key === 'ArrowRight') keys.right = true;
+  if (e.key === 'ArrowUp') keys.up = true;
+  if (e.key === 'ArrowDown') keys.down = true;
+});
+
+window.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowLeft') keys.left = false;
+  if (e.key === 'ArrowRight') keys.right = false;
+  if (e.key === 'ArrowUp') keys.up = false;
+  if (e.key === 'ArrowDown') keys.down = false;
+});
+
+const accel = 0.02;
+const friction = 0.9;
+
 // 🎬 Animation
 function animate() {
   requestAnimationFrame(animate);
-
-  const speed = 0.18;
+  const speed = 0.13;
   const t = Date.now() * 0.001;
 
   // 🌆 move city (illusion of flight)
@@ -155,24 +185,28 @@ function animate() {
   }
 
   // ✈️ plane motion (side + up/down)
-  plane.position.x = Math.sin(t) * 5;
-  plane.position.y = 10 + Math.sin(t * 2) * 0.5;
+  // 🎮 Movement logic
+  if(keys.left)velocity.x-=accel;
+  if(keys.right) velocity.x+=accel;
+  if(keys.up)velocity.y+=accel;
+  if(keys.down)velocity.y-=accel;
+  plane.position.x+=velocity.x;
+  plane.position.y+=velocity.y;
+  velocity.x*=friction;
+  velocity.y*=friction;
+  plane.position.x= THREE.MathUtils.clamp(plane.position.x,-9,9);
+  plane.position.y=THREE.MathUtils.clamp(plane.position.y,5,22);
+  camera.position.x+=(plane.position.x-camera.position.x)*0.04;//5%closer to plane 
+  camera.position.y+=(plane.position.y-camera.position.y)*0.06;
+  camera.position.z=plane.position.z+10;
+  plane.rotation.z=-velocity.x*3;//left/right tilt 
+  plane.rotation.x=velocity.y*2;//up/down tilt
 
-  // tilt plane
-  plane.rotation.z = -plane.position.x * 0.1;
-
-  // 🎥 camera follow (SMOOTH)
-  camera.position.x += (plane.position.x - camera.position.x) * 0.05;
-  camera.position.y += (plane.position.y + 2 - camera.position.y) * 0.05;
-  camera.position.z = plane.position.z + 10;
-
-  // look forward
   camera.lookAt(
     plane.position.x,
     plane.position.y,
-    plane.position.z - 20
+    plane.position.z-20
   );
-
   renderer.render(scene, camera);
 }
 
