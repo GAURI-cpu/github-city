@@ -1,9 +1,14 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 
 // 🌍 Scene
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x120018);
-scene.fog = new THREE.FogExp2(0x120018, 0.05);
+scene.background = new THREE.Color(0x0a0012);
+
+// ✅ FIXED FOG (better than Exp2)
+scene.fog = new THREE.Fog(0x0a0012, 8, 50);
 
 // 📷 Camera
 const camera = new THREE.PerspectiveCamera(
@@ -13,46 +18,76 @@ const camera = new THREE.PerspectiveCamera(
   1000
 );
 camera.position.set(0, 8, 15);
-const topLights=[];
 
-// 🖥️ Renderer
+const topLights = [];
+
+// 🖥️ Renderer (optimized)
 const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.3)); // reduced
 document.body.appendChild(renderer.domElement);
 
-// Billborads
-const canvas=document.createElement("canvas");
-canvas.width=512;
-canvas.height=128;
-// writing
-const ctx=canvas.getContext("2d");
-const texture= new THREE.CanvasTexture(canvas);
-const Billmat = new THREE.MeshBasicMaterial({ map: texture });
-const Billgeo = new THREE.PlaneGeometry(3, 1);
+const composer = new EffectComposer(renderer);
 
-const billboard = new THREE.Mesh(Billgeo, Billmat);
-billboard.position.set(0, 10, -5);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
 
-scene.add(billboard);
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  1.2,   // strength (increase for more glow)
+  0.4,   // radius
+  0.6   // threshold (lower = more glow)
+);
+
+composer.addPass(bloomPass); 
+
+// 🌌 SKY GLOW (NEW)
+const skyGeo = new THREE.SphereGeometry(200, 16, 16);
+const skyMat = new THREE.MeshBasicMaterial({
+  color: 0x220033,
+  side: THREE.BackSide
+});
+scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+// ✨ PARTICLES (LIGHTWEIGHT)
+const particlesGeo = new THREE.BufferGeometry();
+const particlesCount = 400; // reduced for performance
+const positions = [];
+
+for (let i = 0; i < particlesCount; i++) {
+  positions.push(
+    (Math.random() - 0.5) * 80,
+    Math.random() * 40,
+    (Math.random() - 0.5) * 80
+  );
+}
+
+particlesGeo.setAttribute(
+  'position',
+  new THREE.Float32BufferAttribute(positions, 3)
+);
+
+const particlesMat = new THREE.PointsMaterial({
+  color: 0xff00ff,
+  size: 0.2
+});
+
+const particles = new THREE.Points(particlesGeo, particlesMat);
+scene.add(particles);
 
 // 💡 Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+
 const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(10, 20, 10);
 scene.add(light);
 
-// darker ambient (important for neon look)
-scene.add(new THREE.AmbientLight(0xffffff, 0.2));
-
-// ✨ CYBERPUNK NEON LIGHTS
-const lights = [
+// neon lights
+[
   { color: 0xff00ff, pos: [0, 20, 10] },
-  { color: 0x00ffff, pos: [-15, 15, -10] },
-  { color: 0xff66ff, pos: [15, 10, -20] }
-];
-
-lights.forEach(l => {
-  const neon = new THREE.PointLight(l.color, 4, 100);
+  { color: 0x00ffff, pos: [-15, 15, -10] }
+].forEach(l => {
+  const neon = new THREE.PointLight(l.color, 3, 80);
   neon.position.set(...l.pos);
   scene.add(neon);
 });
@@ -61,24 +96,19 @@ lights.forEach(l => {
 const buildingGeo = new THREE.BoxGeometry(0.6, 1, 0.6);
 const windowGeo = new THREE.PlaneGeometry(0.07, 0.07);
 
-// 🏙️ City generator
+// 🏙️ CITY (OPTIMIZED)
 function createCity(group) {
-  for (let i = -20; i < 20; i++) {
-    for (let j = -20; j < 20; j++) {
+  for (let i = -20; i < 20; i += 1.5) {
+    for (let j = -20; j < 20; j += 1.5) {
+
+      if (Math.random() > 0.65) continue; // 🔥 reduce load
 
       const height = Math.random() * 6 + 2;
 
-      // 🎨 CYBERPUNK BUILDING COLORS
-      const buildingColors = [
-        0x2a003f,
-        0x001f3f,
-        0x3f0030
-      ];
-
       const material = new THREE.MeshStandardMaterial({
-        color: buildingColors[Math.floor(Math.random() * buildingColors.length)],
-        emissive: new THREE.Color(0x220033),
-        emissiveIntensity: 0.5
+        color: [0x2a003f, 0x001f3f, 0x3f0030][Math.floor(Math.random()*3)],
+        emissive: 0x220033,
+        emissiveIntensity: 1.2
       });
 
       const building = new THREE.Mesh(buildingGeo, material);
@@ -86,112 +116,62 @@ function createCity(group) {
       building.scale.y = height;
       group.add(building);
 
-      
-      if(Math.random()>0.85){
-        const topGeo=new THREE.BoxGeometry(0.6,0.03,0.6);
-        const topMat=new THREE.MeshStandardMaterial({
-          color:0xffff00,
-          emissive:0xffff00,
-          emissiveIntensity:1.2
-        })
-        const topLight=new THREE.Mesh(topGeo,topMat);
-        topLight.position.set(i,height+0.05,j);
-        group.add(topLight);
-        topLights.push(topLight);
+      // 🟨 TOP LIGHT
+      if (Math.random() > 0.9) {
+        const top = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.03, 0.6),
+          new THREE.MeshBasicMaterial({ color: 0xffff00 })
+        );
+        top.position.set(i, height + 0.05, j);
+        group.add(top);
+        topLights.push(top);
       }
 
-      // 🪟 NEON WINDOWS
-      const neonColors = [
-        0x00ffff,
-        0xff00ff,
-        0xff66ff,
-        0x00ffcc
-      ];
+      // 🪟 WINDOWS (LESS = better performance)
+      for (let y = 0.5; y < height; y += 1) {
+        if (Math.random() > 0.5) continue;
 
-      for (let y = 0.5; y < height; y += 0.8) {
-        for (let x = -0.2; x <= 0.2; x += 0.2) {
+        const win = new THREE.Mesh(
+          windowGeo,
+          new THREE.MeshBasicMaterial({
+            color: [0x00ffff, 0xff00ff, 0x00ffcc][Math.floor(Math.random()*3)]
+          })
+        );
 
-          if (Math.random() > 0.4) {
-
-            const winMat = new THREE.MeshBasicMaterial({
-              color: neonColors[Math.floor(Math.random() * neonColors.length)]
-            });
-
-            const win = new THREE.Mesh(windowGeo, winMat);
-            win.position.set(i + x, y, j + 0.31);
-            win.scale.set(1.3, 1.3, 1);
-
-            group.add(win);
-          }
-        }
+        win.position.set(i, y, j + 0.31);
+        group.add(win);
       }
     }
   }
 }
 
-// 🏙️ Two city chunks
+// 🏙️ City chunks
 const city1 = new THREE.Group();
 const city2 = new THREE.Group();
-
-scene.add(city1);
-scene.add(city2);
+scene.add(city1, city2);
 
 createCity(city1);
 createCity(city2);
 
-const CITY_SIZE = 40;
+const CITY_SIZE = 32;
 city2.position.z = -CITY_SIZE;
 
 // ✈️ Plane
 const plane = new THREE.Group();
 scene.add(plane);
 
-// body
-const body = new THREE.Mesh(
+plane.add(new THREE.Mesh(
   new THREE.BoxGeometry(0.7, 0.6, 4),
   new THREE.MeshBasicMaterial({ color: 0xffffff })
-);
-plane.add(body);
+));
 
-// wings (neon pink)
 const wings = new THREE.Mesh(
   new THREE.BoxGeometry(6, 0.1, 0.6),
   new THREE.MeshBasicMaterial({ color: 0xff00ff })
 );
 plane.add(wings);
 
-// tail wing
-const tailWing = new THREE.Mesh(
-  new THREE.BoxGeometry(1.2, 0.1, 0.3),
-  new THREE.MeshBasicMaterial({ color: 0xff00ff })
-);
-tailWing.position.set(0, 0, -1.5);
-plane.add(tailWing);
-
-// tail
-const tail = new THREE.Mesh(
-  new THREE.BoxGeometry(0.5, 0.9, 0.4),
-  new THREE.MeshBasicMaterial({ color: 0xffffff })
-);
-tail.position.set(0, 0.4, -1.5);
-plane.add(tail);
-
-// ✨ glow
-const glow = new THREE.Mesh(
-  new THREE.SphereGeometry(0.2),
-  new THREE.MeshBasicMaterial({ color: 0x00ffff })
-);
-glow.position.set(0, 0, 2);
-plane.add(glow);
-
 plane.position.set(0, 10, 0);
-
-// 🔄 Resize
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
 
 // 🎮 Controls
 const keys = { left:false, right:false, up:false, down:false };
@@ -211,27 +191,37 @@ window.addEventListener('keyup', e => {
   if (e.key === 'ArrowDown') keys.down = false;
 });
 
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+});
+
 const accel = 0.02;
 const friction = 0.9;
 
-let offset=0;
 // 🎬 Animation
 function animate() {
   requestAnimationFrame(animate);
 
-  const speed = 0.13;
+  const speed = 0.12;
 
   city1.position.z += speed;
   city2.position.z += speed;
 
-  if (city1.position.z >= 35) {
+  if (city1.position.z >= 25) {
     city1.position.z = city2.position.z - CITY_SIZE;
   }
-
-  if (city2.position.z >= 35) {
+  if (city2.position.z >= 25) {
     city2.position.z = city1.position.z - CITY_SIZE;
   }
 
+  // 🎮 movement
   if (keys.left) velocity.x -= accel;
   if (keys.right) velocity.x += accel;
   if (keys.up) velocity.y += accel;
@@ -243,38 +233,31 @@ function animate() {
   velocity.x *= friction;
   velocity.y *= friction;
 
-  plane.position.x = THREE.MathUtils.clamp(plane.position.x, -9, 9);
-  plane.position.y = THREE.MathUtils.clamp(plane.position.y, 5, 22);
+  plane.position.x = THREE.MathUtils.clamp(plane.position.x, -8, 8);
+  plane.position.y = THREE.MathUtils.clamp(plane.position.y, 6, 20);
 
-  camera.position.x += (plane.position.x - camera.position.x) * 0.04;
-  camera.position.y += (plane.position.y - camera.position.y) * 0.06;
-  camera.position.z = plane.position.z + 10;
-
-  plane.rotation.z = -velocity.x * 3;
-  plane.rotation.x = velocity.y * 2;
+  // 🎥 camera
+  camera.position.x += (plane.position.x - camera.position.x) * 0.05;
+  camera.position.y += (plane.position.y - camera.position.y) * 0.05;
+  camera.position.z = plane.position.z + 12;
 
   camera.lookAt(
     plane.position.x,
     plane.position.y,
     plane.position.z - 20
   );
-  // flikker the top light
-  topLights.forEach(light=>{
-    const t= Date.now()*0.002;
-    const flicker = Math.sin(t + light.position.x * 7) > 0 ? 1 : 0.2;
-    light.material.color.setScalar(flicker);
-  })
 
-  offset-=2;
-  ctx.fillStyle="black";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle="#00ffff";
-  ctx.font="bold 60px Arial";
-  ctx.fillText("hello",offset,80);
-  ctx.fillText("hello",offset+300,80);
-  if(offset<-300)offset=0;
-  texture.needsUpdate=true;
-  renderer.render(scene, camera);
+  // ✨ particle motion
+  particles.position.z += 0.05;
+  if (particles.position.z > 40) particles.position.z = -40;
+
+  // ✨ flicker
+  topLights.forEach(light => {
+    const t = Date.now() * 0.002;
+    const flicker = Math.sin(t + light.position.x * 5) > 0 ? 1 : 0.3;
+    light.material.color.setScalar(flicker);
+  });
+   composer.render();
 }
 
 animate();
